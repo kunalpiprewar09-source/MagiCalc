@@ -31,10 +31,14 @@ button:focus-visible{outline:3px solid #ff6a1a;outline-offset:2px}
 .eq{background:#ff6a1a;color:#fff;font-size:44px;box-shadow:none}
 #dlg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:24px;z-index:5}
 #dlg.open{display:flex}
-.card{background:#fff;color:#111;border-radius:20px;padding:20px;width:100%;max-width:320px}
+.card{background:#fff;color:#111;border-radius:20px;padding:20px;width:100%;max-width:340px}
 .card h2{margin:0 0 12px;font-size:18px;font-weight:500}
+.card label{display:block;font-size:13px;color:#6b7280;margin:14px 0 6px}
 .card input{width:100%;font-size:22px;padding:10px 12px;border:1px solid #cfd2d8;border-radius:12px;-webkit-user-select:text;user-select:text}
-.row{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.mbtn{width:100%;aspect-ratio:auto;height:auto;padding:12px 14px;border-radius:12px;font-size:15px;font-weight:400;text-align:left;justify-content:flex-start;background:#eceef1;margin-bottom:8px;box-shadow:none}
+.mbtn.on{background:#ffe0cc;color:#e8550a;font-weight:500}
+.info{font-size:14px;color:#374151;margin-top:6px}
+.row{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 .row button{width:auto;aspect-ratio:auto;height:44px;padding:0 18px;font-size:16px;font-weight:500;border-radius:12px;background:#eceef1;box-shadow:none}
 .row .save{background:#ff6a1a;color:#fff}
 </style>
@@ -81,8 +85,15 @@ button:focus-visible{outline:3px solid #ff6a1a;outline-offset:2px}
 
 <div id="dlg">
   <div class="card">
-    <h2>Secret answer</h2>
-    <input id="secretInput" type="text" inputmode="decimal" autocomplete="off">
+    <h2>Mode</h2>
+    <button class="mbtn" data-mode="0">Normal (no trick)</button>
+    <button class="mbtn" data-mode="1">Mode 1 · × 123 → secret answer</button>
+    <button class="mbtn" data-mode="2">Mode 2 · spectator number · ÷ 3</button>
+    <div id="secWrap">
+      <label for="secretInput">Secret answer (Mode 1)</label>
+      <input id="secretInput" type="text" inputmode="decimal" autocomplete="off">
+    </div>
+    <div id="capWrap" class="info"></div>
     <div class="row">
       <button id="cancel">Cancel</button>
       <button id="save" class="save">Save</button>
@@ -92,8 +103,27 @@ button:focus-visible{outline:3px solid #ff6a1a;outline-offset:2px}
 
 <script>
 (function(){
-  var cur="0",prev=null,op=null,fresh=false,hist="",secret="999";
-  try{secret=localStorage.getItem("secret")||"999";}catch(e){}
+  var cur="0",prev=null,op=null,fresh=false,hist="";
+  var mode=1,secret="999",captured=null,armed=true;
+
+  function load(){
+    try{
+      var m=localStorage.getItem("mode");if(m!==null)mode=parseInt(m,10);
+      secret=localStorage.getItem("secret")||"999";
+      captured=localStorage.getItem("captured");
+      var a=localStorage.getItem("armed");if(a!==null)armed=(a==="1");
+    }catch(e){}
+  }
+  function save(){
+    try{
+      localStorage.setItem("mode",String(mode));
+      localStorage.setItem("secret",secret);
+      if(captured===null)localStorage.removeItem("captured");else localStorage.setItem("captured",captured);
+      localStorage.setItem("armed",armed?"1":"0");
+    }catch(e){}
+  }
+  load();
+
   var curEl=document.getElementById("cur"),histEl=document.getElementById("hist");
   var opBtns=document.querySelectorAll(".op");
 
@@ -106,10 +136,16 @@ button:focus-visible{outline:3px solid #ff6a1a;outline-offset:2px}
       opBtns[i].classList.toggle("sel",op===opBtns[i].dataset.v&&fresh);
     }
   }
+
   function calc(a,b,o){
     var x=parseFloat(a),y=parseFloat(b),r;
-    // TRICK: koi bhi number x 123 (ya 123 x number) => aapka secret answer
-    if(o==="×"&&(x===123||y===123))return secret;
+    // MODE 1: koi bhi number x 123 (ya 123 x number) => secret answer
+    if(mode===1&&o==="×"&&(x===123||y===123))return secret;
+    // MODE 2: koi bhi number ÷ 3 => spectator ne jo number likha tha
+    if(mode===2&&o==="÷"&&y===3&&captured!==null){
+      armed=true;save();
+      return captured;
+    }
     if(o==="+")r=x+y;
     else if(o==="−")r=x-y;
     else if(o==="×")r=x*y;
@@ -117,6 +153,7 @@ button:focus-visible{outline:3px solid #ff6a1a;outline-offset:2px}
     if(!isFinite(r))return "Error";
     return String(parseFloat(r.toPrecision(12)));
   }
+
   function num(d){
     if(cur==="Error"||fresh){cur="0";fresh=false;}
     if(cur.replace(/[-.]/g,"").length+d.length>15)return;
@@ -137,7 +174,15 @@ button:focus-visible{outline:3px solid #ff6a1a;outline-offset:2px}
     cur=calc(a,b,o);hist=a+" "+o+" "+b+" =";
     op=null;prev=null;fresh=true;
   }
-  function clr(){cur="0";prev=null;op=null;fresh=false;hist="";}
+  function clr(){
+    // MODE 2: AC dabate hi screen par likha hua number chupke se yaad kar lo
+    if(mode===2&&armed&&op===null&&!fresh&&cur!=="0"&&cur!=="Error"){
+      captured=cur.replace(/\.$/,"");
+      armed=false;
+      save();
+    }
+    cur="0";prev=null;op=null;fresh=false;hist="";
+  }
   function back(){
     if(cur==="Error"||fresh)return;
     cur=(cur.length>1&&!(cur.length===2&&cur[0]==="-"))?cur.slice(0,-1):"0";
@@ -161,20 +206,44 @@ button:focus-visible{outline:3px solid #ff6a1a;outline-offset:2px}
     render();
   });
 
+  // ---- Secret settings (display ko lamba dabayein) ----
   var dlg=document.getElementById("dlg"),inp=document.getElementById("secretInput");
-  function openDlg(){inp.value=secret;dlg.classList.add("open");setTimeout(function(){inp.focus();},50);}
+  var secWrap=document.getElementById("secWrap"),capWrap=document.getElementById("capWrap");
+  var mbtns=document.querySelectorAll(".mbtn"),pending=mode;
+
+  function paint(){
+    for(var i=0;i<mbtns.length;i++){
+      mbtns[i].classList.toggle("on",parseInt(mbtns[i].dataset.mode,10)===pending);
+    }
+    secWrap.style.display=(pending===1)?"block":"none";
+    if(pending===2){
+      capWrap.style.display="block";
+      capWrap.textContent="Captured number: "+(captured!==null?captured:"none yet");
+    }else{
+      capWrap.style.display="none";
+    }
+  }
+  for(var i=0;i<mbtns.length;i++){
+    mbtns[i].addEventListener("click",function(){
+      pending=parseInt(this.dataset.mode,10);paint();
+    });
+  }
+  function openDlg(){
+    pending=mode;inp.value=secret;paint();
+    dlg.classList.add("open");
+  }
   function closeDlg(){dlg.classList.remove("open");}
   document.getElementById("cancel").addEventListener("click",closeDlg);
   document.getElementById("save").addEventListener("click",function(){
     var v=inp.value.trim();
-    if(v!==""&&isFinite(Number(v))){
-      secret=v;
-      try{localStorage.setItem("secret",secret);}catch(e){}
+    if(pending===1&&v!==""&&isFinite(Number(v)))secret=v;
+    if(pending!==mode){
+      mode=pending;
+      if(mode===2){armed=true;captured=null;}   // Mode 2 chunte hi naye sire se taiyar
     }
-    closeDlg();
+    save();closeDlg();
   });
 
-  // Display ko lamba dabayein => secret answer set karne ka box khulega
   var timer=null,disp=document.getElementById("display");
   function start(){clearTimeout(timer);timer=setTimeout(openDlg,600);}
   function stop(){clearTimeout(timer);}
